@@ -495,7 +495,8 @@
                     <button class="btn btn-secondary" @click="showConfigModal = true">⚙️ Config</button>
                     <button class="btn btn-secondary" @click="showExamplesModal = true">📥 Exemplos</button>
                     <button class="btn btn-secondary" @click="showKnowledgeModal = true">📚 Base</button>
-                    <button class="btn btn-primary" @click="exportSpec">📄 Exportar Spec</button>
+                    <button class="btn btn-primary" @click="showGeneratorModal = true">✨ Criar Agente</button>
+                    <button class="btn btn-secondary" @click="exportSpec">📄 Exportar</button>
                 </div>
             </header>
 
@@ -535,6 +536,19 @@
                         <div class="progress-bar" style="margin-top: 0.5rem">
                             <div class="progress-fill" :style="{ width: (stats.bestScore || 0) + '%' }"></div>
                         </div>
+                    </div>
+
+                    <div
+                        style="background: var(--bg-card); padding: 1rem; border-radius: 12px; border: 1px solid var(--border)">
+                        <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.9rem">🧬
+                            Escolha o Agente:</label>
+                        <select v-model="selectedAgentId" @change="handleAgentChange"
+                            style="width: 100%; padding: 0.5rem; border-radius: 6px; background: var(--bg-dark); color: white; border: 1px solid var(--border)">
+                            <option :value="null">🐣 Vendedor Padrão (Inicial)</option>
+                            <option v-for="agent in agents" :key="agent.id" :value="agent.id">
+                                {{ agent.name }} (Gen #{{ agent.generation }}) {{ agent.isActive ? '✅' : '' }}
+                            </option>
+                        </select>
                     </div>
 
                     <button class="btn btn-success" style="width: 100%; justify-content: center; padding: 1rem;"
@@ -600,8 +614,13 @@
                 <aside class="logs-panel card">
                     <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
                         <span>📋 Logs</span>
-                        <button @click="copyLogs"
-                            style="background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 0.8rem;">Copiar</button>
+                        <div style="display: flex; gap: 0.5rem">
+                            <button @click="copyLogs"
+                                style="background: var(--bg-dark); border: 1px solid var(--border); color: var(--text); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 0.8rem;">Copiar</button>
+                            <button @click="clearLogs"
+                                style="background: var(--bg-dark); border: 1px solid var(--border); color: var(--text); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 0.8rem;">🗑️
+                                Limpar</button>
+                        </div>
                     </div>
                     <div class="logs-container" ref="logsContainer">
                         <div v-for="(log, idx) in logs" :key="idx" class="log-entry" :class="log.type">
@@ -613,8 +632,7 @@
                             <div>Nenhum log ainda</div>
                         </div>
                     </div>
-                    <button class="btn btn-secondary" style="margin-top: 0.5rem" @click="clearLogs">🗑️ Limpar
-                        Logs</button>
+
                 </aside>
             </main>
         </div>
@@ -648,13 +666,7 @@
 
                 <div class="form-group">
                     <label>🎭 Personalidade Inicial do Vendedor</label>
-                    <div style="margin-bottom: 0.5rem; display: flex; justify-content: flex-end;">
-                        <button class="btn btn-xs" @click="generateSellerFromExamples"
-                            :disabled="isGeneratingSeller || examples.length === 0"
-                            style="font-size: 0.75rem; padding: 2px 8px; background: var(--secondary); color: white; border: none; border-radius: 4px; cursor: pointer;">
-                            {{ isGeneratingSeller ? '⏳ Analisando...' : '✨ Gerar Baseado em Exemplos' }}
-                        </button>
-                    </div>
+
                     <textarea v-model="config.initialPersonality"
                         placeholder="Descreva a personalidade inicial..."></textarea>
                 </div>
@@ -746,6 +758,95 @@
             </div>
         </div>
 
+        <!-- Agent Manager Modal -->
+        <div v-if="showGeneratorModal" class="modal-overlay" @click.self="showGeneratorModal = false">
+            <div class="modal" style="max-width: 800px">
+                <div class="modal-header">
+                    <h2>🤖 Gestão de Agentes Vendedores</h2>
+                    <button class="modal-close" @click="showGeneratorModal = false">&times;</button>
+                </div>
+
+                <!-- Tabs -->
+                <div
+                    style="display: flex; gap: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem">
+                    <button class="btn" :class="generatorTab === 'LIST' ? 'btn-primary' : 'btn-secondary'"
+                        @click="generatorTab = 'LIST'">👤 Meus Agentes</button>
+                    <button class="btn" :class="generatorTab === 'CREATE' ? 'btn-primary' : 'btn-secondary'"
+                        @click="generatorTab = 'CREATE'">✨ Criar Novo</button>
+                </div>
+
+                <!-- TAB: LIST -->
+                <div v-if="generatorTab === 'LIST'">
+                    <div class="examples-list">
+                        <div v-for="agent in agents" :key="agent.id" class="example-item"
+                            :style="{borderColor: agent.isActive ? 'var(--success)' : ''}">
+                            <div style="flex: 1">
+                                <div style="display: flex; align-items: center; gap: 0.5rem">
+                                    <strong>{{ agent.name || 'Agente #' + agent.id }}</strong>
+                                    <span v-if="agent.isActive"
+                                        style="background: var(--success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem">ATIVO</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px">
+                                    Criado em: {{ new Date(agent.createdAt).toLocaleDateString() }}
+                                </div>
+                                <div
+                                    style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;">
+                                    {{ agent.systemPrompt.substring(0, 50) }}...
+                                </div>
+                            </div>
+                            <button v-if="!agent.isActive" @click="activateAgent(agent)" class="btn-xs btn-primary">✅
+                                Selecionar</button>
+                            <button @click="deleteAgent(agent.id)" class="btn-xs">🗑️</button>
+                        </div>
+                        <div v-if="agents.length === 0" class="empty-state">
+                            Nenhum agente criado. Crie um novo!
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: CREATE -->
+                <div v-if="generatorTab === 'CREATE'">
+                    <div class="form-group">
+                        <label>Nome do Agente</label>
+                        <input type="text" v-model="newAgentName" placeholder="Ex: Carlos - Especialista Técnico">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Experiência / Exemplos de Atendimento Real (Para Imitação)</label>
+                        <p class="text-xs text-muted">Cole aqui conversas reais de WhatsApp de bons vendedores. O agente
+                            tentará imitar o estilo de escrita e técnica.</p>
+                        <textarea v-model="agentExperience" placeholder="Vendedor: Oi, tudo bem? 😄 Bom te ver por aqui!
+Cliente: Olá...
+Vendedor: Olha, para o seu caso eu recomendo..." style="min-height: 120px"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Selecione os Exemplos de Treino (Correção de Erros)</label>
+                        <p class="text-xs text-muted">Estes exemplos definirão como o agente reage a objeções.</p>
+
+                        <div class="examples-list" style="max-height: 200px; overflow-y: auto;">
+                            <label v-for="ex in examples" :key="ex.id" class="example-item"
+                                style="cursor: pointer; justify-content: flex-start; gap: 1rem">
+                                <input type="checkbox" :value="ex.id" v-model="selectedExampleIds">
+                                <div>
+                                    <div style="font-weight: bold">{{ ex.title }}</div>
+                                    <div class="text-xs text-muted">{{ ex.conversation.substring(0, 50) }}...</div>
+                                </div>
+                            </label>
+                            <div v-if="examples.length === 0" class="empty-state">
+                                Nenhum exemplo disponível. Adicione exemplos primeiro!
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" style="width: 100%" @click="trainAgent"
+                        :disabled="isGeneratingSeller || !newAgentName || (selectedExampleIds.length === 0 && (!agentExperience || agentExperience.trim().length === 0))">
+                        {{ isGeneratingSeller ? '🧬 Treinando Agente...' : '🧠 Treinar e Criar Agente' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Export Modal -->
         <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
             <div class="modal">
@@ -785,6 +886,16 @@
             knowledgeBase: '++id, title, content, isActive, createdAt'
         });
 
+        // Version 3: Active Agents Support
+        db.version(3).stores({
+            salesExamples: '++id, title, conversation, createdAt',
+            sellerAgents: '++id, generation, systemPrompt, name, isActive, parentId, createdAt', // Added isActive
+            battles: '++id, sellerId, conversation, score, result, feedback, createdAt',
+            settings: 'key, value',
+            logs: '++id, type, message, timestamp',
+            knowledgeBase: '++id, title, content, isActive, createdAt'
+        });
+
         const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
         createApp({
@@ -794,14 +905,25 @@
                 const showExamplesModal = ref(false);
                 const showExportModal = ref(false);
                 const showKnowledgeModal = ref(false);
+                const showGeneratorModal = ref(false); // NEW
                 const isGeneratingSeller = ref(false);
                 const isRunning = ref(false);
+
+                // Agent Management
+                const agents = ref([]);
+                const activeAgent = ref(null);
+                const selectedAgentId = ref(null); // For UI dropdown
+                const generatorTab = ref('LIST'); // LIST | CREATE
+
+                const newAgentName = ref('');
+                const agentExperience = ref(''); // NEW: Positive examples
+                const selectedExampleIds = ref([]);
 
                 const config = ref({
                     apiKey: '',
                     product: 'Tratamento odontológico',
                     maxTurns: 7,
-                    initialPersonality: 'Vendedor amigável, consultivo e focado em resolver problemas do cliente. Não é agressivo, escuta ativamente e faz perguntas inteligentes.'
+                    initialPersonality: 'Vendedor padrão. Crie um agente para personalizar.'
                 });
 
                 const examples = ref([]);
@@ -892,6 +1014,16 @@
                     // Load knowledge base
                     knowledgeItems.value = await db.knowledgeBase.toArray();
 
+                    // Load agents
+                    agents.value = await db.sellerAgents.toArray();
+                    activeAgent.value = agents.value.find(a => a.isActive === 1) || null;
+                    if (activeAgent.value) {
+                        selectedAgentId.value = activeAgent.value.id;
+                        addLog('INFO', `Agente ativo: ${activeAgent.value.name}`);
+                    } else {
+                        selectedAgentId.value = null;
+                    }
+
                     addLog('INFO', 'Sistema inicializado');
                 }
 
@@ -918,31 +1050,150 @@
                     knowledgeItems.value = await db.knowledgeBase.toArray();
                 }
 
-                async function generateSellerFromExamples() {
-                    if (examples.value.length === 0) return;
+                async function activateAgent(agent) {
+                    // Deactivate all
+                    const allAgents = await db.sellerAgents.toArray();
+                    for (const a of allAgents) {
+                        // Fix: Avoid attempting to update if already 0 to minimize writes
+                        if (a.isActive !== 0) {
+                            await db.sellerAgents.update(a.id, { isActive: 0 });
+                        }
+                    }
+
+                    // Activate target
+                    await db.sellerAgents.update(agent.id, { isActive: 1 });
+
+                    // Refresh
+                    agents.value = await db.sellerAgents.toArray();
+                    activeAgent.value = agents.value.find(a => a.isActive === 1);
+
+                    addLog('INFO', `Agente "${agent.name}" ativado!`);
+                    selectedAgentId.value = agent.id;
+                }
+
+                // Handler for dropdown change
+                async function handleAgentChange() {
+                    if (selectedAgentId.value === null) {
+                        // Deactivate all
+                        const allAgents = await db.sellerAgents.toArray();
+                        for (const a of allAgents) {
+                            if (a.isActive !== 0) await db.sellerAgents.update(a.id, { isActive: 0 });
+                        }
+                        activeAgent.value = null;
+                        agents.value = await db.sellerAgents.toArray();
+                        addLog('INFO', 'Voltando para Vendedor Padrão');
+                        return;
+                    }
+
+                    const agent = agents.value.find(a => a.id === selectedAgentId.value);
+                    if (agent) {
+                        await activateAgent(agent);
+                    }
+                }
+
+                async function deleteAgent(id) {
+                    if (!confirm('Tem certeza?')) return;
+                    await db.sellerAgents.delete(id);
+                    agents.value = await db.sellerAgents.toArray();
+                    activeAgent.value = agents.value.find(a => a.isActive === 1);
+                }
+
+                async function trainAgent() {
+                    if (isGeneratingSeller.value) return;
                     isGeneratingSeller.value = true;
-                    addLog('INFO', 'Analisando exemplos para gerar persona...');
+                    addLog('INFO', `Treinando agente "${newAgentName.value}"...`);
 
                     try {
-                        const examplesText = examples.value.map(e => `EXEMPLO (${e.title}):\n${e.conversation}`).join('\n\n');
-                        const prompt = `Analise os seguintes exemplos de vendas REAIS que NÃO foram fechadas.
-                        
+                        // Filter selected examples
+                        const trainingData = examples.value.filter(e => selectedExampleIds.value.includes(e.id));
+                        const examplesText = trainingData.map(e => `EXEMPLO (${e.title}):\n${e.conversation}`).join('\n\n');
+
+                        // Construct Prompt
+                        let promptParts = [
+                            `Você é um especialista em criar personas de vendas (System Prompts).`
+                        ];
+
+                        // 1. Positive Support (Experience)
+                        if (agentExperience.value && agentExperience.value.trim().length > 0) {
+                            promptParts.push(`
+MIMETISMO E ESTILO (IMPORTANTE):
+Abaixo estão exemplos de como um atendente REAL e eficiente escreve no WhatsApp.
+Sua tarefa é extrair e incorporar na personalidade do agente:
+- O tom de voz (formal/informal)
+- O uso de emojis
+- O tamanho das frases
+- A maneira de cumprimentar e abordar
+- As técnicas de persuasão sutis utilizadas
+
+EXEMPLOS POSITIVOS PARA IMITAR:
+${agentExperience.value}
+`);
+                        }
+
+                        // 2. Negative Examples (Objection Handling)
+                        if (examplesText.length > 0) {
+                            promptParts.push(`
+ANÁLISE DE FALHAS (O QUE EVITAR):
+Abaixo estão exemplos de vendas que NÃO foram fechadas.
+Identifique onde os vendedores falharam e crie instruções para evitar esses erros.
+
+EXEMPLOS DE FALHAS:
 ${examplesText}
+`);
+                        }
 
-Seu objetivo é criar um PROMPT DE SISTEMA para um VENDEDOR EXPERT que consiga reverter essas situações.
-Identifique onde os vendedores falharam e crie uma personalidade que evite esses erros.
+                        // 3. Goal
+                        promptParts.push(`
+OBJETIVO FINAL:
+Crie um PROMPT DE SISTEMA detalhado para um agente de vendas de ${config.value.product}.
+O agente deve ter o ESTILO dos exemplos positivos (se houver) e a SABEDORIA para evitar os erros dos exemplos de falhas.
+Comece o prompt com "Você é..."`);
 
-Gere APENAS o texto do prompt de sistema para o vendedor. Comece com "Você é um vendedor..."`;
+                        const fullPrompt = promptParts.join('\n\n');
 
-                        const generatedPersona = await callPerplexity(prompt, [], 'GERADOR');
-                        config.value.initialPersonality = generatedPersona;
-                        addLog('INFO', '✨ Personalidade gerada com sucesso baseada nos exemplos!');
+                        // FIX: Send instructions as USER message to avoid 400 Bad Request
+                        const systemInstruction = "Você é um especialista em criar personas de vendas (System Prompts).";
+                        const generatedPersona = await callPerplexity(systemInstruction, [{ role: 'user', content: fullPrompt }], 'TREINADOR');
+
+                        // Save new agent
+                        await db.sellerAgents.add({
+                            name: newAgentName.value,
+                            systemPrompt: generatedPersona,
+                            generation: 1,
+                            isActive: 1, // Make active by default
+                            createdAt: new Date().toISOString()
+                        });
+
+                        // Deactivate others
+                        const allAgents = await db.sellerAgents.toArray();
+                        // The new one is already added, but might not have ID yet in this array fetch if async? 
+                        // No, 'add' returns ID. But we need to update others.
+                        // Simplest: Deactivate all others.
+                        // Wait, we just added it.
+                        // Let's just run activateAgent logic manually or call it?
+
+                        // Refresh list
+                        agents.value = await db.sellerAgents.toArray();
+                        const newAgent = agents.value[agents.value.length - 1]; // Assume last
+
+                        // Activate this new one properly
+                        await activateAgent(newAgent);
+
+                        addLog('INFO', `✨ Agente "${newAgentName.value}" criado e ativado!`);
+                        addLog('INFO', `✨ Agente "${newAgentName.value}" criado e ativado!`);
+                        newAgentName.value = '';
+                        agentExperience.value = '';
+                        selectedExampleIds.value = [];
+                        generatorTab.value = 'LIST';
+
                     } catch (err) {
-                        addLog('ERROR', 'Erro ao gerar vendedor: ' + err.message);
+                        addLog('ERROR', 'Erro ao treinar agente: ' + err.message);
                     } finally {
                         isGeneratingSeller.value = false;
                     }
                 }
+
+                // Old functions removed/replaced
 
                 async function saveConfig() {
                     await db.settings.put({ key: 'apiKey', value: config.value.apiKey });
@@ -1103,14 +1354,20 @@ INSTRUÇÕES:
                             ? `\n\nBASE DE CONHECIMENTO (Use estas informações em suas respostas):\n${activeKnowledge.map(k => `==== ${k.title} ====\n${k.content}`).join('\n\n')}`
                             : '';
 
+
+
+                        const agentSystemPrompt = activeAgent.value
+                            ? activeAgent.value.systemPrompt
+                            : config.value.initialPersonality;
+
                         const sellerPrompt = `Você é um vendedor especializado em ${config.value.product}.
 ${knowledgeContext}
 
 GERAÇÃO: #${stats.value.generation}
-${sellerLearnings}
+VENDEDOR: ${activeAgent.value ? activeAgent.value.name : 'Padrão'}
 
 PERSONALIDADE:
-${config.value.initialPersonality}
+${agentSystemPrompt}
 
 OBJETIVO:
 - Fechar a venda de forma ética e profissional
@@ -1276,10 +1533,15 @@ Avalie o vendedor de 0 a 100 e responda APENAS em JSON assim:
                         addLog('EVOLUTION', '🧬 Gerando agente filho melhorado...');
 
                         const evoSystem = 'Você é um especialista em otimização de prompts de vendas.';
+
+                        // FIX: Use current active agent's prompt as baseline, not the initial default one
+                        const currentPrompt = activeAgent.value ? activeAgent.value.systemPrompt : config.value.initialPersonality;
+                        const currentGen = activeAgent.value ? activeAgent.value.generation : stats.value.generation;
+
                         const evoTask = `Baseado no feedback do juiz, crie uma versão melhorada do prompt do vendedor.
 
 PROMPT ATUAL:
-${config.value.initialPersonality}
+${currentPrompt}
 
 FEEDBACK DO JUIZ:
 - Score: ${judgment.score}
@@ -1290,14 +1552,28 @@ Gere um prompt melhorado que corrija os erros e incorpore as sugestões. Seja br
 
                         const newPrompt = await callPerplexity(evoSystem, [{ role: 'user', content: evoTask }], 'EVOLUÇÃO');
 
-                        const newGeneration = stats.value.generation + 1;
+                        const newGeneration = currentGen + 1;
+                        const parentName = activeAgent.value ? activeAgent.value.name : 'Vendedor Padrão';
+                        // Create a cleaner name: "Gen #X (Line: ParentName)" or just "ParentName v2"
+                        // Simplest: "Gen #X (via ParentID)" or just iterate number.
+                        // User wants "Evolutions".
+                        const newName = `${parentName} [v${newGeneration}]`;
+
                         const newSellerId = await db.sellerAgents.add({
                             generation: newGeneration,
                             systemPrompt: newPrompt,
-                            name: `Vendedor Gen #${newGeneration}`,
-                            parentId: bestSeller.value?.id || null,
+                            name: newName,
+                            parentId: activeAgent.value ? activeAgent.value.id : null,
+                            isActive: 0, // We will activate it below in a clean way
                             createdAt: new Date().toISOString()
                         });
+
+                        // Auto-select the NEW evolved agent to continue the "Line"
+                        const allAgentsReload = await db.sellerAgents.toArray();
+                        const newlyCreatedAgent = allAgentsReload.find(a => a.id === newSellerId);
+                        if (newlyCreatedAgent) {
+                            await activateAgent(newlyCreatedAgent);
+                        }
 
                         bestSeller.value = {
                             id: newSellerId,
@@ -1365,6 +1641,7 @@ Gere um prompt melhorado que corrija os erros e incorpore as sugestões. Seja br
                     showConfigModal,
                     showExamplesModal,
                     showExportModal,
+                    showGeneratorModal, // ADDED
                     isRunning,
                     config,
                     examples,
@@ -1383,7 +1660,18 @@ Gere um prompt melhorado que corrija os erros e incorpore as sugestões. Seja br
                     addKnowledge,
                     removeKnowledge,
                     toggleKnowledge,
-                    generateSellerFromExamples,
+                    agents,
+                    activeAgent,
+                    agentExperience, // ADDED
+                    generatorTab,
+                    newAgentName,
+                    selectedExampleIds,
+                    activateAgent,
+                    deleteAgent,
+                    trainAgent,
+                    selectedAgentId,
+                    handleAgentChange,
+
                     conversationView,
                     logsContainer,
                     addLog,
