@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧬 Agent Evolution Arena</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --secondary: #8b5cf6;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --border: #475569;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        .app-container {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5558e3;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #0ea572;
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Main Layout */
+        .main-content {
+            display: grid;
+            grid-template-columns: 280px 1fr 350px;
+            gap: 1rem;
+            padding: 1rem;
+            overflow: hidden;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Stats Panel */
+        .stats-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--bg-dark);
+            border-radius: 8px;
+        }
+
+        .stat-value {
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: var(--primary);
+        }
+
+        /* Arena */
+        .arena {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow: hidden;
+        }
+
+        .battle-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow: hidden;
+        }
+
+        .agents-display {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .agent-card {
+            background: var(--bg-dark);
+            padding: 1rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .agent-icon {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .vs-badge {
+            background: linear-gradient(135deg, var(--warning), var(--error));
+            padding: 0.5rem 1rem;
+            border-radius: 50%;
+            font-weight: 700;
+        }
+
+        .conversation-view {
+            flex: 1;
+            overflow-y: auto;
+            background: var(--bg-dark);
+            border-radius: 12px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .message {
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            max-width: 80%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.client {
+            background: linear-gradient(135deg, #374151, #4b5563);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.seller {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message-role {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            margin-bottom: 0.25rem;
+        }
+
+        .judge-result {
+            background: linear-gradient(135deg, var(--warning), #d97706);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-top: auto;
+        }
+
+        .score-display {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        /* Logs Panel */
+        .logs-panel {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .logs-container {
+            flex: 1;
+            overflow-y: auto;
+            background: var(--bg-dark);
+            border-radius: 8px;
+            padding: 0.5rem;
+            font-family: 'Consolas', monospace;
+            font-size: 0.8rem;
+        }
+
+        .log-entry {
+            padding: 0.25rem 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .log-entry.INFO {
+            color: var(--text-muted);
+        }
+
+        .log-entry.BATTLE {
+            color: var(--primary);
+        }
+
+        .log-entry.JUDGE {
+            color: var(--warning);
+        }
+
+        .log-entry.EVOLUTION {
+            color: var(--success);
+        }
+
+        .log-entry.ERROR {
+            color: var(--error);
+        }
+
+        .log-time {
+            color: var(--text-muted);
+            margin-right: 0.5rem;
+        }
+
+        .log-type {
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .tab {
+            padding: 0.5rem 1rem;
+            background: var(--bg-dark);
+            border: none;
+            border-radius: 8px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .tab:hover:not(.active) {
+            background: var(--bg-card-hover);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 1.5rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-dark);
+            color: var(--text);
+            font-size: 1rem;
+        }
+
+        .form-group textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        /* Examples List */
+        .examples-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .example-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: var(--bg-dark);
+            border-radius: 8px;
+        }
+
+        .example-item button {
+            background: var(--error);
+            border: none;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* Progress */
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-dark);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            transition: width 0.3s;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Spec Export */
+        .spec-preview {
+            background: var(--bg-dark);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr auto;
+            }
+
+            .stats-panel {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div class="app-container">
+            <!-- Header -->
+            <header class="header">
+                <h1>🧬 Agent Evolution Arena</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" @click="showConfigModal = true">⚙️ Config</button>
+                    <button class="btn btn-secondary" @click="showExamplesModal = true">📥 Exemplos</button>
+                    <button class="btn btn-primary" @click="exportSpec">📄 Exportar Spec</button>
+                </div>
+            </header>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Stats Panel -->
+                <aside class="stats-panel">
+                    <div class="card">
+                        <div class="card-title">📊 Estatísticas</div>
+                        <div class="stat-item">
+                            <span>Geração</span>
+                            <span class="stat-value">#{{ stats.generation }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Melhor Score</span>
+                            <span class="stat-value">{{ stats.bestScore }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Vitórias</span>
+                            <span class="stat-value" style="color: var(--success)">{{ stats.wins }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Derrotas</span>
+                            <span class="stat-value" style="color: var(--error)">{{ stats.losses }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Total Batalhas</span>
+                            <span class="stat-value">{{ stats.totalBattles }}</span>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">🎯 Melhor Vendedor</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted)">
+                            {{ bestSeller ? bestSeller.name : 'Nenhum ainda' }}
+                        </div>
+                        <div class="progress-bar" style="margin-top: 0.5rem">
+                            <div class="progress-fill" :style="{ width: (stats.bestScore || 0) + '%' }"></div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-success" style="width: 100%; justify-content: center; padding: 1rem;"
+                        @click="startBattle" :disabled="isRunning || !hasApiKey || examples.length === 0">
+                        {{ isRunning ? '⏳ Batalha em andamento...' : '⚔️ Iniciar Batalha' }}
+                    </button>
+
+                    <div v-if="!hasApiKey" style="color: var(--warning); font-size: 0.8rem; text-align: center;">
+                        ⚠️ Configure a API Key primeiro
+                    </div>
+                    <div v-if="examples.length === 0"
+                        style="color: var(--warning); font-size: 0.8rem; text-align: center;">
+                        ⚠️ Adicione exemplos de conversas
+                    </div>
+                </aside>
+
+                <!-- Arena -->
+                <section class="arena card">
+                    <div class="card-title">🏟️ Arena de Batalha</div>
+
+                    <div class="battle-container">
+                        <div class="agents-display">
+                            <div class="agent-card">
+                                <div class="agent-icon">👤</div>
+                                <div>Cliente</div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted)">Simulador</div>
+                            </div>
+                            <div class="vs-badge">VS</div>
+                            <div class="agent-card">
+                                <div class="agent-icon">🎯</div>
+                                <div>Vendedor</div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted)">Gen #{{ stats.generation }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="conversation-view" ref="conversationView">
+                            <template v-if="currentConversation.length > 0">
+                                <div v-for="(msg, idx) in currentConversation" :key="idx" class="message"
+                                    :class="msg.role">
+                                    <div class="message-role">{{ msg.role === 'client' ? '👤 Cliente' : '🎯 Vendedor' }}
+                                    </div>
+                                    <div>{{ msg.content }}</div>
+                                </div>
+                            </template>
+                            <div v-else class="empty-state">
+                                <div class="empty-state-icon">🏟️</div>
+                                <div>Clique em "Iniciar Batalha" para começar</div>
+                            </div>
+                        </div>
+
+                        <div v-if="judgeResult" class="judge-result">
+                            <div class="card-title">⚖️ Avaliação do Juiz</div>
+                            <div class="score-display">{{ judgeResult.score }}/100</div>
+                            <div style="margin-top: 0.5rem; font-size: 0.9rem;">
+                                {{ judgeResult.result === 'FECHOU' ? '✅ Venda Fechada!' : '❌ Não Fechou' }}
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Logs Panel -->
+                <aside class="logs-panel card">
+                    <div class="card-title">📋 Logs</div>
+                    <div class="logs-container" ref="logsContainer">
+                        <div v-for="(log, idx) in logs" :key="idx" class="log-entry" :class="log.type">
+                            <span class="log-time">{{ log.time }}</span>
+                            <span class="log-type">[{{ log.type }}]</span>
+                            <span>{{ log.message }}</span>
+                        </div>
+                        <div v-if="logs.length === 0" class="empty-state">
+                            <div>Nenhum log ainda</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" style="margin-top: 0.5rem" @click="clearLogs">🗑️ Limpar
+                        Logs</button>
+                </aside>
+            </main>
+        </div>
+
+        <!-- Config Modal -->
+        <div v-if="showConfigModal" class="modal-overlay" @click.self="showConfigModal = false">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>⚙️ Configurações</h2>
+                    <button class="modal-close" @click="showConfigModal = false">&times;</button>
+                </div>
+
+                <div class="form-group">
+                    <label>🔑 API Key Perplexity</label>
+                    <input type="password" v-model="config.apiKey" placeholder="pplx-xxxx..." />
+                </div>
+
+                <div class="form-group">
+                    <label>📦 Produto/Serviço</label>
+                    <input type="text" v-model="config.product" placeholder="Ex: Tratamento odontológico" />
+                </div>
+
+                <div class="form-group">
+                    <label>🔄 Turnos por Batalha</label>
+                    <select v-model="config.maxTurns">
+                        <option value="5">5 turnos</option>
+                        <option value="7">7 turnos</option>
+                        <option value="10">10 turnos</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>🎭 Personalidade Inicial do Vendedor</label>
+                    <textarea v-model="config.initialPersonality"
+                        placeholder="Descreva a personalidade inicial..."></textarea>
+                </div>
+
+                <button class="btn btn-primary" @click="saveConfig" style="width: 100%">💾 Salvar Configurações</button>
+            </div>
+        </div>
+
+        <!-- Examples Modal -->
+        <div v-if="showExamplesModal" class="modal-overlay" @click.self="showExamplesModal = false">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>📥 Exemplos de Conversas</h2>
+                    <button class="modal-close" @click="showExamplesModal = false">&times;</button>
+                </div>
+
+                <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                    Adicione exemplos de conversas de vendas que NÃO foram fechadas.
+                    O sistema usará para criar clientes simulados.
+                </p>
+
+                <div class="form-group">
+                    <label>Título do Exemplo</label>
+                    <input type="text" v-model="newExample.title" placeholder="Ex: Cliente preocupado com preço" />
+                </div>
+
+                <div class="form-group">
+                    <label>Conversa (cole aqui)</label>
+                    <textarea v-model="newExample.conversation" placeholder="Cole a conversa aqui..."></textarea>
+                </div>
+
+                <button class="btn btn-success" @click="addExample" style="width: 100%; margin-bottom: 1rem;">
+                    ➕ Adicionar Exemplo
+                </button>
+
+                <div class="card-title">Exemplos Cadastrados ({{ examples.length }})</div>
+                <div class="examples-list">
+                    <div v-for="ex in examples" :key="ex.id" class="example-item">
+                        <span>{{ ex.title }}</span>
+                        <button @click="removeExample(ex.id)">🗑️</button>
+                    </div>
+                    <div v-if="examples.length === 0" class="empty-state">
+                        Nenhum exemplo cadastrado
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Modal -->
+        <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>📄 Especificação do Agente</h2>
+                    <button class="modal-close" @click="showExportModal = false">&times;</button>
+                </div>
+
+                <pre class="spec-preview">{{ specJson }}</pre>
+
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <button class="btn btn-primary" @click="copySpec" style="flex: 1">📋 Copiar</button>
+                    <button class="btn btn-success" @click="downloadSpec" style="flex: 1">⬇️ Baixar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Database Setup
+        const db = new Dexie('AgentEvolutionDB');
+        db.version(1).stores({
+            salesExamples: '++id, title, conversation, createdAt',
+            sellerAgents: '++id, generation, systemPrompt, name, parentId, createdAt',
+            battles: '++id, sellerId, conversation, score, result, feedback, createdAt',
+            settings: 'key, value',
+            logs: '++id, type, message, timestamp'
+        });
+
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                // State
+                const showConfigModal = ref(false);
+                const showExamplesModal = ref(false);
+                const showExportModal = ref(false);
+                const isRunning = ref(false);
+
+                const config = ref({
+                    apiKey: '',
+                    product: 'Tratamento odontológico',
+                    maxTurns: 7,
+                    initialPersonality: 'Vendedor amigável, consultivo e focado em resolver problemas do cliente. Não é agressivo, escuta ativamente e faz perguntas inteligentes.'
+                });
+
+                const examples = ref([]);
+                const logs = ref([]);
+                const currentConversation = ref([]);
+                const judgeResult = ref(null);
+                const bestSeller = ref(null);
+                const specJson = ref('');
+
+                const stats = ref({
+                    generation: 1,
+                    bestScore: 0,
+                    wins: 0,
+                    losses: 0,
+                    totalBattles: 0
+                });
+
+                const newExample = ref({ title: '', conversation: '' });
+
+                const conversationView = ref(null);
+                const logsContainer = ref(null);
+
+                // Computed
+                const hasApiKey = computed(() => config.value.apiKey.length > 10);
+
+                // Methods
+                function addLog(type, message) {
+                    const now = new Date();
+                    const time = now.toTimeString().split(' ')[0];
+                    logs.value.push({ type, message, time });
+
+                    db.logs.add({
+                        type,
+                        message,
+                        timestamp: now.toISOString()
+                    });
+
+                    nextTick(() => {
+                        if (logsContainer.value) {
+                            logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
+                        }
+                    });
+                }
+
+                function clearLogs() {
+                    logs.value = [];
+                }
+
+                async function loadData() {
+                    // Load config
+                    const savedApiKey = await db.settings.get('apiKey');
+                    const savedProduct = await db.settings.get('product');
+                    const savedMaxTurns = await db.settings.get('maxTurns');
+                    const savedPersonality = await db.settings.get('initialPersonality');
+
+                    if (savedApiKey) config.value.apiKey = savedApiKey.value;
+                    if (savedProduct) config.value.product = savedProduct.value;
+                    if (savedMaxTurns) config.value.maxTurns = parseInt(savedMaxTurns.value);
+                    if (savedPersonality) config.value.initialPersonality = savedPersonality.value;
+
+                    // Load examples
+                    examples.value = await db.salesExamples.toArray();
+
+                    // Load best seller
+                    const sellers = await db.sellerAgents.orderBy('id').reverse().first();
+                    if (sellers) {
+                        bestSeller.value = sellers;
+                        stats.value.generation = sellers.generation;
+                    }
+
+                    // Load battles for stats
+                    const battles = await db.battles.toArray();
+                    stats.value.totalBattles = battles.length;
+                    stats.value.wins = battles.filter(b => b.result === 'FECHOU').length;
+                    stats.value.losses = battles.filter(b => b.result !== 'FECHOU').length;
+                    stats.value.bestScore = battles.length > 0 ? Math.max(...battles.map(b => b.score || 0)) : 0;
+
+                    addLog('INFO', 'Sistema inicializado');
+                }
+
+                async function saveConfig() {
+                    await db.settings.put({ key: 'apiKey', value: config.value.apiKey });
+                    await db.settings.put({ key: 'product', value: config.value.product });
+                    await db.settings.put({ key: 'maxTurns', value: config.value.maxTurns.toString() });
+                    await db.settings.put({ key: 'initialPersonality', value: config.value.initialPersonality });
+
+                    showConfigModal.value = false;
+                    addLog('INFO', 'Configurações salvas');
+                }
+
+                async function addExample() {
+                    if (!newExample.value.title || !newExample.value.conversation) return;
+
+                    const id = await db.salesExamples.add({
+                        title: newExample.value.title,
+                        conversation: newExample.value.conversation,
+                        createdAt: new Date().toISOString()
+                    });
+
+                    examples.value.push({
+                        id,
+                        title: newExample.value.title,
+                        conversation: newExample.value.conversation
+                    });
+
+                    newExample.value = { title: '', conversation: '' };
+                    addLog('INFO', `Exemplo "${examples.value[examples.value.length - 1].title}" adicionado`);
+                }
+
+                async function removeExample(id) {
+                    await db.salesExamples.delete(id);
+                    examples.value = examples.value.filter(e => e.id !== id);
+                    addLog('INFO', 'Exemplo removido');
+                }
+
+                async function callPerplexity(systemPrompt, messages, agentName = 'API') {
+                    const apiUrl = 'https://api.perplexity.ai/chat/completions';
+
+                    const apiKeyPreview = config.value.apiKey ?
+                        `${config.value.apiKey.substring(0, 8)}...${config.value.apiKey.substring(config.value.apiKey.length - 4)}` :
+                        'NÃO CONFIGURADA';
+
+                    addLog('INFO', `[${agentName}] Preparando requisição...`);
+                    addLog('INFO', `[${agentName}] API Key: ${apiKeyPreview}`);
+
+                    const requestBody = {
+                        model: 'llama-3.1-sonar-small-128k-online',
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            ...messages
+                        ],
+                        max_tokens: 500,
+                        temperature: 0.7
+                    };
+
+                    addLog('INFO', `[${agentName}] System prompt: ${systemPrompt.substring(0, 80)}...`);
+
+                    try {
+                        addLog('INFO', `[${agentName}] Enviando requisição para Perplexity...`);
+
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${config.value.apiKey}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(requestBody)
+                        });
+
+                        addLog('INFO', `[${agentName}] Status: ${response.status} ${response.statusText}`);
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            addLog('ERROR', `[${agentName}] Erro HTTP ${response.status}`);
+                            addLog('ERROR', `[${agentName}] Resposta: ${errorText.substring(0, 200)}`);
+
+                            if (response.status === 401) {
+                                addLog('ERROR', `[${agentName}] ⚠️ API Key inválida ou expirada!`);
+                                addLog('ERROR', `[${agentName}] Verifique sua chave em: https://www.perplexity.ai/settings/api`);
+                            }
+
+                            throw new Error(`API Error ${response.status}: ${errorText.substring(0, 100)}`);
+                        }
+
+                        const data = await response.json();
+
+                        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+                            addLog('ERROR', `[${agentName}] Resposta inválida: ${JSON.stringify(data).substring(0, 200)}`);
+                            throw new Error('Resposta da API em formato inválido');
+                        }
+
+                        const content = data.choices[0].message.content;
+                        addLog('INFO', `[${agentName}] ✅ Resposta recebida (${content.length} chars)`);
+
+                        return content;
+
+                    } catch (error) {
+                        addLog('ERROR', `[${agentName}] ❌ Falha na requisição`);
+                        addLog('ERROR', `[${agentName}] Tipo: ${error.name}`);
+                        addLog('ERROR', `[${agentName}] Mensagem: ${error.message}`);
+
+                        if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+                            addLog('ERROR', `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+                            addLog('ERROR', `🚫 ERRO DE CORS DETECTADO!`);
+                            addLog('ERROR', `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+                            addLog('ERROR', `A API Perplexity não permite chamadas`);
+                            addLog('ERROR', `de arquivos locais (file://).`);
+                            addLog('ERROR', ``);
+                            addLog('ERROR', `📋 SOLUÇÕES:`);
+                            addLog('ERROR', `1. Faça deploy no GitHub Pages`);
+                            addLog('ERROR', `2. Use um servidor local (Live Server)`);
+                            addLog('ERROR', `3. Instale extensão CORS no navegador`);
+                            addLog('ERROR', `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+                        }
+
+                        throw error;
+                    }
+                }
+
+                async function startBattle() {
+                    if (isRunning.value) return;
+                    isRunning.value = true;
+                    currentConversation.value = [];
+                    judgeResult.value = null;
+
+                    try {
+                        addLog('INFO', '⚔️ Iniciando nova batalha...');
+
+                        // Select random example
+                        const example = examples.value[Math.floor(Math.random() * examples.value.length)];
+                        addLog('INFO', `Cliente baseado em: "${example.title}"`);
+
+                        // Client system prompt
+                        const clientPrompt = `Você é um simulador de cliente para treinamento de vendedores.
+Você está simulando um cliente que está interessado em ${config.value.product} mas tem objeções.
+
+BASEADO NESTE EXEMPLO DE CONVERSA REAL DE UM CLIENTE DIFÍCIL:
+${example.conversation}
+
+INSTRUÇÕES:
+- Aja como este tipo de cliente agiria
+- Apresente objeções realistas (preço, tempo, dúvidas)
+- Seja difícil, mas não impossível de convencer
+- Se o vendedor for MUITO convincente e resolver suas objeções, você PODE fechar a venda
+- Responda de forma natural e breve (máximo 2-3 frases)
+- Não revele que é uma simulação
+- Se decidir fechar, inclua "FECHOU_VENDA" no final
+- Se desistir por insistência excessiva, inclua "DESISTIU" no final`;
+
+                        // Seller system prompt
+                        const sellerLearnings = bestSeller.value ?
+                            `APRENDIZADOS ANTERIORES: ${bestSeller.value.systemPrompt}` : '';
+
+                        const sellerPrompt = `Você é um vendedor especializado em ${config.value.product}.
+
+GERAÇÃO: #${stats.value.generation}
+${sellerLearnings}
+
+PERSONALIDADE:
+${config.value.initialPersonality}
+
+OBJETIVO:
+- Fechar a venda de forma ética e profissional
+- Entender as necessidades do cliente
+- Superar objeções com argumentos sólidos
+- Criar relacionamento de confiança
+
+Responda de forma natural e breve (máximo 2-3 frases). Seja consultivo, não agressivo.`;
+
+                        // Start conversation
+                        const messages = [];
+                        const maxTurns = parseInt(config.value.maxTurns);
+
+                        // First client message
+                        addLog('BATTLE', 'Cliente iniciando conversa...');
+                        const firstClientMsg = await callPerplexity(clientPrompt, [
+                            { role: 'user', content: 'Inicie a conversa como se estivesse entrando em contato interessado no produto, mas com dúvidas.' }
+                        ], 'CLIENTE');
+
+                        currentConversation.value.push({ role: 'client', content: firstClientMsg });
+                        messages.push({ role: 'user', content: firstClientMsg });
+                        addLog('BATTLE', `Cliente: ${firstClientMsg.substring(0, 50)}...`);
+
+                        await nextTick();
+                        if (conversationView.value) {
+                            conversationView.value.scrollTop = conversationView.value.scrollHeight;
+                        }
+
+                        // Battle loop
+                        for (let turn = 0; turn < maxTurns; turn++) {
+                            // Check if ended
+                            if (firstClientMsg.includes('FECHOU_VENDA') || firstClientMsg.includes('DESISTIU')) break;
+
+                            // Seller responds
+                            addLog('BATTLE', 'Vendedor respondendo...');
+                            const sellerMsg = await callPerplexity(sellerPrompt, messages, 'VENDEDOR');
+                            currentConversation.value.push({ role: 'seller', content: sellerMsg });
+                            messages.push({ role: 'assistant', content: sellerMsg });
+                            addLog('BATTLE', `Vendedor: ${sellerMsg.substring(0, 50)}...`);
+
+                            await nextTick();
+                            if (conversationView.value) {
+                                conversationView.value.scrollTop = conversationView.value.scrollHeight;
+                            }
+
+                            await new Promise(r => setTimeout(r, 500));
+
+                            // Client responds
+                            addLog('BATTLE', 'Cliente respondendo...');
+                            const clientMsg = await callPerplexity(clientPrompt, [
+                                ...messages.map((m, i) => ({
+                                    role: i % 2 === 0 ? 'assistant' : 'user',
+                                    content: m.content
+                                })),
+                                { role: 'user', content: 'Continue a conversa reagindo à última mensagem do vendedor.' }
+                            ], 'CLIENTE');
+
+                            currentConversation.value.push({ role: 'client', content: clientMsg });
+                            messages.push({ role: 'user', content: clientMsg });
+                            addLog('BATTLE', `Cliente: ${clientMsg.substring(0, 50)}...`);
+
+                            await nextTick();
+                            if (conversationView.value) {
+                                conversationView.value.scrollTop = conversationView.value.scrollHeight;
+                            }
+
+                            if (clientMsg.includes('FECHOU_VENDA') || clientMsg.includes('DESISTIU')) {
+                                addLog('BATTLE', clientMsg.includes('FECHOU_VENDA') ? '✅ Cliente fechou!' : '❌ Cliente desistiu');
+                                break;
+                            }
+
+                            await new Promise(r => setTimeout(r, 500));
+                        }
+
+                        // Judge evaluation
+                        addLog('JUDGE', '⚖️ Juiz analisando conversa...');
+
+                        const judgePrompt = `Você é um juiz especialista em vendas. Analise esta conversa:
+
+${currentConversation.value.map(m => `${m.role === 'client' ? 'CLIENTE' : 'VENDEDOR'}: ${m.content}`).join('\n')}
+
+Avalie o vendedor de 0 a 100 e responda APENAS em JSON assim:
+{
+  "score": (número de 0 a 100),
+  "result": "FECHOU" ou "NAO_FECHOU",
+  "strengths": ["ponto forte 1", "ponto forte 2"],
+  "errors": ["erro 1", "erro 2"],
+  "suggestions": ["sugestão 1", "sugestão 2"]
+}`;
+
+                        const judgeResponse = await callPerplexity(judgePrompt, [], 'JUIZ');
+
+                        // Parse judge response
+                        let judgment;
+                        try {
+                            const jsonMatch = judgeResponse.match(/\{[\s\S]*\}/);
+                            judgment = JSON.parse(jsonMatch[0]);
+                        } catch (e) {
+                            judgment = { score: 50, result: 'NAO_FECHOU', errors: [], suggestions: [] };
+                        }
+
+                        judgeResult.value = judgment;
+                        addLog('JUDGE', `Score: ${judgment.score}/100`);
+                        addLog('JUDGE', `Resultado: ${judgment.result}`);
+
+                        // Update stats
+                        stats.value.totalBattles++;
+                        if (judgment.result === 'FECHOU') {
+                            stats.value.wins++;
+                            addLog('EVOLUTION', '🏆 Vitória!');
+                        } else {
+                            stats.value.losses++;
+                            addLog('EVOLUTION', '📉 Derrota');
+                        }
+
+                        if (judgment.score > stats.value.bestScore) {
+                            stats.value.bestScore = judgment.score;
+                            addLog('EVOLUTION', '🌟 Novo recorde de score!');
+                        }
+
+                        // Save battle
+                        await db.battles.add({
+                            sellerId: bestSeller.value?.id || 0,
+                            conversation: currentConversation.value,
+                            score: judgment.score,
+                            result: judgment.result,
+                            feedback: judgment,
+                            createdAt: new Date().toISOString()
+                        });
+
+                        // Generate child agent
+                        addLog('EVOLUTION', '🧬 Gerando agente filho melhorado...');
+
+                        const evolutionPrompt = `Baseado no feedback do juiz, crie uma versão melhorada do prompt do vendedor.
+
+PROMPT ATUAL:
+${config.value.initialPersonality}
+
+FEEDBACK DO JUIZ:
+- Score: ${judgment.score}
+- Erros: ${(judgment.errors || []).join(', ')}
+- Sugestões: ${(judgment.suggestions || []).join(', ')}
+
+Gere um prompt melhorado que corrija os erros e incorpore as sugestões. Seja breve e direto.`;
+
+                        const newPrompt = await callPerplexity(evolutionPrompt, [], 'EVOLUÇÃO');
+
+                        const newGeneration = stats.value.generation + 1;
+                        const newSellerId = await db.sellerAgents.add({
+                            generation: newGeneration,
+                            systemPrompt: newPrompt,
+                            name: `Vendedor Gen #${newGeneration}`,
+                            parentId: bestSeller.value?.id || null,
+                            createdAt: new Date().toISOString()
+                        });
+
+                        bestSeller.value = {
+                            id: newSellerId,
+                            generation: newGeneration,
+                            systemPrompt: newPrompt,
+                            name: `Vendedor Gen #${newGeneration}`
+                        };
+
+                        stats.value.generation = newGeneration;
+                        addLog('EVOLUTION', `✨ Geração #${newGeneration} criada!`);
+
+                    } catch (error) {
+                        addLog('ERROR', `Erro: ${error.message}`);
+                        console.error(error);
+                    } finally {
+                        isRunning.value = false;
+                    }
+                }
+
+                function exportSpec() {
+                    const spec = {
+                        agentName: "Vendedor Evolutivo",
+                        version: "1.0.0",
+                        product: config.value.product,
+                        generation: stats.value.generation,
+                        created: new Date().toISOString(),
+                        evolution: {
+                            totalBattles: stats.value.totalBattles,
+                            wins: stats.value.wins,
+                            losses: stats.value.losses,
+                            winRate: stats.value.totalBattles > 0
+                                ? ((stats.value.wins / stats.value.totalBattles) * 100).toFixed(1) + '%'
+                                : '0%',
+                            bestScore: stats.value.bestScore
+                        },
+                        systemPrompt: bestSeller.value?.systemPrompt || config.value.initialPersonality,
+                        personality: config.value.initialPersonality
+                    };
+
+                    specJson.value = JSON.stringify(spec, null, 2);
+                    showExportModal.value = true;
+                }
+
+                function copySpec() {
+                    navigator.clipboard.writeText(specJson.value);
+                    addLog('INFO', 'Especificação copiada para área de transferência');
+                }
+
+                function downloadSpec() {
+                    const blob = new Blob([specJson.value], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `agent_spec_gen${stats.value.generation}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    addLog('INFO', 'Especificação baixada');
+                }
+
+                onMounted(() => {
+                    loadData();
+                });
+
+                return {
+                    showConfigModal,
+                    showExamplesModal,
+                    showExportModal,
+                    isRunning,
+                    config,
+                    examples,
+                    logs,
+                    currentConversation,
+                    judgeResult,
+                    bestSeller,
+                    stats,
+                    newExample,
+                    specJson,
+                    hasApiKey,
+                    conversationView,
+                    logsContainer,
+                    addLog,
+                    clearLogs,
+                    saveConfig,
+                    addExample,
+                    removeExample,
+                    startBattle,
+                    exportSpec,
+                    copySpec,
+                    downloadSpec
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>
