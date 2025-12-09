@@ -494,6 +494,7 @@
                 <div class="header-actions">
                     <button class="btn btn-secondary" @click="showConfigModal = true">⚙️ Config</button>
                     <button class="btn btn-secondary" @click="showExamplesModal = true">📥 Exemplos</button>
+                    <button class="btn btn-secondary" @click="showKnowledgeModal = true">📚 Base</button>
                     <button class="btn btn-primary" @click="exportSpec">📄 Exportar Spec</button>
                 </div>
             </header>
@@ -647,6 +648,13 @@
 
                 <div class="form-group">
                     <label>🎭 Personalidade Inicial do Vendedor</label>
+                    <div style="margin-bottom: 0.5rem; display: flex; justify-content: flex-end;">
+                        <button class="btn btn-xs" @click="generateSellerFromExamples"
+                            :disabled="isGeneratingSeller || examples.length === 0"
+                            style="font-size: 0.75rem; padding: 2px 8px; background: var(--secondary); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            {{ isGeneratingSeller ? '⏳ Analisando...' : '✨ Gerar Baseado em Exemplos' }}
+                        </button>
+                    </div>
                     <textarea v-model="config.initialPersonality"
                         placeholder="Descreva a personalidade inicial..."></textarea>
                 </div>
@@ -695,6 +703,49 @@
             </div>
         </div>
 
+        <!-- Knowledge Modal -->
+        <div v-if="showKnowledgeModal" class="modal-overlay" @click.self="showKnowledgeModal = false">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>📚 Base de Conhecimento</h2>
+                    <button class="modal-close" @click="showKnowledgeModal = false">&times;</button>
+                </div>
+                <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem;">
+                    Informações essenciais que o vendedor DEVE saber (preços, diferenciais, objeções).
+                </p>
+
+                <div class="form-group">
+                    <label>Título / Tópico</label>
+                    <input type="text" v-model="newKnowledge.title" placeholder="Ex: Tabela de Preços">
+                </div>
+                <div class="form-group">
+                    <label>Conteúdo</label>
+                    <textarea v-model="newKnowledge.content"
+                        placeholder="O conteúdo técnico ou informativo..."></textarea>
+                </div>
+
+                <button class="btn btn-success" @click="addKnowledge" style="width: 100%; margin-bottom: 1rem;">
+                    ➕ Adicionar Conhecimento
+                </button>
+
+                <div class="card-title">Itens Cadastrados ({{ knowledgeItems.length }})</div>
+                <div class="examples-list">
+                    <div v-for="item in knowledgeItems" :key="item.id" class="example-item"
+                        :style="{opacity: item.isActive ? 1 : 0.6}">
+                        <div style="flex: 1">
+                            <div style="font-weight: bold">{{ item.title }}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted)">{{ item.content.substring(0, 60)
+                                }}...</div>
+                        </div>
+                        <button @click="toggleKnowledge(item)" :title="item.isActive ? 'Desativar' : 'Ativar'">
+                            {{ item.isActive ? '👁️' : '🙈' }}
+                        </button>
+                        <button @click="removeKnowledge(item.id)" title="Remover">🗑️</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Export Modal -->
         <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
             <div class="modal">
@@ -724,6 +775,16 @@
             logs: '++id, type, message, timestamp'
         });
 
+        // Version 2: Knowledge Base
+        db.version(2).stores({
+            salesExamples: '++id, title, conversation, createdAt',
+            sellerAgents: '++id, generation, systemPrompt, name, parentId, createdAt',
+            battles: '++id, sellerId, conversation, score, result, feedback, createdAt',
+            settings: 'key, value',
+            logs: '++id, type, message, timestamp',
+            knowledgeBase: '++id, title, content, isActive, createdAt'
+        });
+
         const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
         createApp({
@@ -732,6 +793,8 @@
                 const showConfigModal = ref(false);
                 const showExamplesModal = ref(false);
                 const showExportModal = ref(false);
+                const showKnowledgeModal = ref(false);
+                const isGeneratingSeller = ref(false);
                 const isRunning = ref(false);
 
                 const config = ref({
@@ -747,6 +810,9 @@
                 const judgeResult = ref(null);
                 const bestSeller = ref(null);
                 const specJson = ref('');
+
+                const knowledgeItems = ref([]);
+                const newKnowledge = ref({ title: '', content: '' });
 
                 const stats = ref({
                     generation: 1,
@@ -823,7 +889,59 @@
                     stats.value.losses = battles.filter(b => b.result !== 'FECHOU').length;
                     stats.value.bestScore = battles.length > 0 ? Math.max(...battles.map(b => b.score || 0)) : 0;
 
+                    // Load knowledge base
+                    knowledgeItems.value = await db.knowledgeBase.toArray();
+
                     addLog('INFO', 'Sistema inicializado');
+                }
+
+                async function addKnowledge() {
+                    if (!newKnowledge.value.title || !newKnowledge.value.content) return;
+                    await db.knowledgeBase.add({
+                        title: newKnowledge.value.title,
+                        content: newKnowledge.value.content,
+                        isActive: true,
+                        createdAt: new Date().toISOString()
+                    });
+                    knowledgeItems.value = await db.knowledgeBase.toArray();
+                    newKnowledge.value = { title: '', content: '' };
+                    addLog('INFO', 'Item de conhecimento adicionado');
+                }
+
+                async function removeKnowledge(id) {
+                    await db.knowledgeBase.delete(id);
+                    knowledgeItems.value = await db.knowledgeBase.toArray();
+                }
+
+                async function toggleKnowledge(item) {
+                    await db.knowledgeBase.update(item.id, { isActive: !item.isActive });
+                    knowledgeItems.value = await db.knowledgeBase.toArray();
+                }
+
+                async function generateSellerFromExamples() {
+                    if (examples.value.length === 0) return;
+                    isGeneratingSeller.value = true;
+                    addLog('INFO', 'Analisando exemplos para gerar persona...');
+
+                    try {
+                        const examplesText = examples.value.map(e => `EXEMPLO (${e.title}):\n${e.conversation}`).join('\n\n');
+                        const prompt = `Analise os seguintes exemplos de vendas REAIS que NÃO foram fechadas.
+                        
+${examplesText}
+
+Seu objetivo é criar um PROMPT DE SISTEMA para um VENDEDOR EXPERT que consiga reverter essas situações.
+Identifique onde os vendedores falharam e crie uma personalidade que evite esses erros.
+
+Gere APENAS o texto do prompt de sistema para o vendedor. Comece com "Você é um vendedor..."`;
+
+                        const generatedPersona = await callPerplexity(prompt, [], 'GERADOR');
+                        config.value.initialPersonality = generatedPersona;
+                        addLog('INFO', '✨ Personalidade gerada com sucesso baseada nos exemplos!');
+                    } catch (err) {
+                        addLog('ERROR', 'Erro ao gerar vendedor: ' + err.message);
+                    } finally {
+                        isGeneratingSeller.value = false;
+                    }
                 }
 
                 async function saveConfig() {
@@ -979,7 +1097,14 @@ INSTRUÇÕES:
                         const sellerLearnings = bestSeller.value ?
                             `APRENDIZADOS ANTERIORES: ${bestSeller.value.systemPrompt}` : '';
 
+                        // [NEW] Knowledge Base Injection
+                        const activeKnowledge = knowledgeItems.value.filter(k => k.isActive);
+                        const knowledgeContext = activeKnowledge.length > 0
+                            ? `\n\nBASE DE CONHECIMENTO (Use estas informações em suas respostas):\n${activeKnowledge.map(k => `==== ${k.title} ====\n${k.content}`).join('\n\n')}`
+                            : '';
+
                         const sellerPrompt = `Você é um vendedor especializado em ${config.value.product}.
+${knowledgeContext}
 
 GERAÇÃO: #${stats.value.generation}
 ${sellerLearnings}
@@ -1251,6 +1376,14 @@ Gere um prompt melhorado que corrija os erros e incorpore as sugestões. Seja br
                     newExample,
                     specJson,
                     hasApiKey,
+                    showKnowledgeModal,
+                    isGeneratingSeller,
+                    knowledgeItems,
+                    newKnowledge,
+                    addKnowledge,
+                    removeKnowledge,
+                    toggleKnowledge,
+                    generateSellerFromExamples,
                     conversationView,
                     logsContainer,
                     addLog,
