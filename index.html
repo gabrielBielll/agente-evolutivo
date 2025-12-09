@@ -597,7 +597,11 @@
 
                 <!-- Logs Panel -->
                 <aside class="logs-panel card">
-                    <div class="card-title">📋 Logs</div>
+                    <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>📋 Logs</span>
+                        <button @click="copyLogs"
+                            style="background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 0.8rem;">Copiar</button>
+                    </div>
                     <div class="logs-container" ref="logsContainer">
                         <div v-for="(log, idx) in logs" :key="idx" class="log-entry" :class="log.type">
                             <span class="log-time">{{ log.time }}</span>
@@ -781,6 +785,13 @@
 
                 function clearLogs() {
                     logs.value = [];
+                }
+
+                function copyLogs() {
+                    const logText = logs.value.map(l => `[${l.time}] [${l.type}] ${l.message}`).join('\n');
+                    navigator.clipboard.writeText(logText)
+                        .then(() => addLog('INFO', 'Logs copiados para a área de transferência!'))
+                        .catch(err => addLog('ERROR', 'Erro ao copiar logs: ' + err));
                 }
 
                 async function loadData() {
@@ -985,17 +996,29 @@ OBJETIVO:
 Responda de forma natural e breve (máximo 2-3 frases). Seja consultivo, não agressivo.`;
 
                         // Start conversation
-                        const messages = [];
+                        // Mantemos dois históricos separados para garantir a alternância correta de roles para cada API
+                        const sellerHistory = []; // Para o vendedor: user=cliente, assistant=vendedor
+                        const clientHistory = []; // Para o cliente: user=vendedor/instrução, assistant=cliente
+
                         const maxTurns = parseInt(config.value.maxTurns);
+
+                        // 1. Instrução inicial para o Cliente (user)
+                        const initialInstruction = {
+                            role: 'user',
+                            content: 'Inicie a conversa como se estivesse entrando em contato interessado no produto, mas com dúvidas.'
+                        };
+                        clientHistory.push(initialInstruction);
 
                         // First client message
                         addLog('BATTLE', 'Cliente iniciando conversa...');
-                        const firstClientMsg = await callPerplexity(clientPrompt, [
-                            { role: 'user', content: 'Inicie a conversa como se estivesse entrando em contato interessado no produto, mas com dúvidas.' }
-                        ], 'CLIENTE');
+                        const firstClientMsg = await callPerplexity(clientPrompt, clientHistory, 'CLIENTE');
 
                         currentConversation.value.push({ role: 'client', content: firstClientMsg });
-                        messages.push({ role: 'user', content: firstClientMsg });
+
+                        // Atualiza históricos
+                        clientHistory.push({ role: 'assistant', content: firstClientMsg }); // Cliente vê sua própria fala como assistant
+                        sellerHistory.push({ role: 'user', content: firstClientMsg });      // Vendedor vê fala do cliente como user
+
                         addLog('BATTLE', `Cliente: ${firstClientMsg.substring(0, 50)}...`);
 
                         await nextTick();
@@ -1006,13 +1029,15 @@ Responda de forma natural e breve (máximo 2-3 frases). Seja consultivo, não ag
                         // Battle loop
                         for (let turn = 0; turn < maxTurns; turn++) {
                             // Check if ended
-                            if (firstClientMsg.includes('FECHOU_VENDA') || firstClientMsg.includes('DESISTIU')) break;
+                            const lastClientMsg = currentConversation.value[currentConversation.value.length - 1].content;
+                            if (lastClientMsg.includes('FECHOU_VENDA') || lastClientMsg.includes('DESISTIU')) break;
 
-                            // Seller responds
+                            // Seller responds (vê histórico onde cliente=user)
                             addLog('BATTLE', 'Vendedor respondendo...');
-                            const sellerMsg = await callPerplexity(sellerPrompt, messages, 'VENDEDOR');
+                            const sellerMsg = await callPerplexity(sellerPrompt, sellerHistory, 'VENDEDOR');
                             currentConversation.value.push({ role: 'seller', content: sellerMsg });
-                            messages.push({ role: 'assistant', content: sellerMsg });
+                            sellerHistory.push({ role: 'assistant', content: sellerMsg });
+                            clientHistory.push({ role: 'user', content: sellerMsg }); // CRITICAL FIX: Update client history with seller's msg
                             addLog('BATTLE', `Vendedor: ${sellerMsg.substring(0, 50)}...`);
 
                             await nextTick();
@@ -1022,18 +1047,30 @@ Responda de forma natural e breve (máximo 2-3 frases). Seja consultivo, não ag
 
                             await new Promise(r => setTimeout(r, 500));
 
-                            // Client responds
-                            addLog('BATTLE', 'Cliente respondendo...');
-                            const clientMsg = await callPerplexity(clientPrompt, [
-                                ...messages.map((m, i) => ({
-                                    role: i % 2 === 0 ? 'assistant' : 'user',
-                                    content: m.content
-                                })),
-                                { role: 'user', content: 'Continue a conversa reagindo à última mensagem do vendedor.' }
-                            ], 'CLIENTE');
+                            // Check turn limit
+                            if (turn >= maxTurns - 1) break;
 
+                            // 3. Cliente responde
+                            addLog('BATTLE', 'Cliente respondendo...');
+
+                            // AUTO-FIX (Segurança extra)
+                            if (clientHistory.length > 0) {
+                                const lastRole = clientHistory[clientHistory.length - 1].role;
+                                if (lastRole !== 'user') {
+                                    addLog('ERROR', `[AUTO-FIX] Histórico desalinhado (fim: ${lastRole}). Inserindo 'user'.`);
+                                    clientHistory.push({ role: 'user', content: '(Continuação...)' });
+                                }
+                            }
+
+                            const clientMsg = await callPerplexity(clientPrompt, clientHistory, 'CLIENTE');
+
+                            // Registra resposta do cliente
                             currentConversation.value.push({ role: 'client', content: clientMsg });
-                            messages.push({ role: 'user', content: clientMsg });
+
+                            // Atualiza históricos
+                            clientHistory.push({ role: 'assistant', content: clientMsg }); // Cliente vê sua fala como assistant
+                            sellerHistory.push({ role: 'user', content: clientMsg });      // Vendedor vê fala do cliente como user
+
                             addLog('BATTLE', `Cliente: ${clientMsg.substring(0, 50)}...`);
 
                             await nextTick();
@@ -1052,7 +1089,8 @@ Responda de forma natural e breve (máximo 2-3 frases). Seja consultivo, não ag
                         // Judge evaluation
                         addLog('JUDGE', '⚖️ Juiz analisando conversa...');
 
-                        const judgePrompt = `Você é um juiz especialista em vendas. Analise esta conversa:
+                        const judgeSystem = 'Você é um juiz especialista em vendas.';
+                        const judgeTask = `Analise esta conversa:
 
 ${currentConversation.value.map(m => `${m.role === 'client' ? 'CLIENTE' : 'VENDEDOR'}: ${m.content}`).join('\n')}
 
@@ -1065,7 +1103,7 @@ Avalie o vendedor de 0 a 100 e responda APENAS em JSON assim:
   "suggestions": ["sugestão 1", "sugestão 2"]
 }`;
 
-                        const judgeResponse = await callPerplexity(judgePrompt, [], 'JUIZ');
+                        const judgeResponse = await callPerplexity(judgeSystem, [{ role: 'user', content: judgeTask }], 'JUIZ');
 
                         // Parse judge response
                         let judgment;
@@ -1096,19 +1134,24 @@ Avalie o vendedor de 0 a 100 e responda APENAS em JSON assim:
                         }
 
                         // Save battle
+                        // IMPORTANT: Clone objects to remove Vue Proxies (DataCloneError prevention)
+                        const cleanConversation = JSON.parse(JSON.stringify(currentConversation.value));
+                        const cleanFeedback = JSON.parse(JSON.stringify(judgment));
+
                         await db.battles.add({
                             sellerId: bestSeller.value?.id || 0,
-                            conversation: currentConversation.value,
+                            conversation: cleanConversation,
                             score: judgment.score,
                             result: judgment.result,
-                            feedback: judgment,
+                            feedback: cleanFeedback,
                             createdAt: new Date().toISOString()
                         });
 
                         // Generate child agent
                         addLog('EVOLUTION', '🧬 Gerando agente filho melhorado...');
 
-                        const evolutionPrompt = `Baseado no feedback do juiz, crie uma versão melhorada do prompt do vendedor.
+                        const evoSystem = 'Você é um especialista em otimização de prompts de vendas.';
+                        const evoTask = `Baseado no feedback do juiz, crie uma versão melhorada do prompt do vendedor.
 
 PROMPT ATUAL:
 ${config.value.initialPersonality}
@@ -1120,7 +1163,7 @@ FEEDBACK DO JUIZ:
 
 Gere um prompt melhorado que corrija os erros e incorpore as sugestões. Seja breve e direto.`;
 
-                        const newPrompt = await callPerplexity(evolutionPrompt, [], 'EVOLUÇÃO');
+                        const newPrompt = await callPerplexity(evoSystem, [{ role: 'user', content: evoTask }], 'EVOLUÇÃO');
 
                         const newGeneration = stats.value.generation + 1;
                         const newSellerId = await db.sellerAgents.add({
@@ -1212,6 +1255,7 @@ Gere um prompt melhorado que corrija os erros e incorpore as sugestões. Seja br
                     logsContainer,
                     addLog,
                     clearLogs,
+                    copyLogs,
                     saveConfig,
                     addExample,
                     removeExample,
